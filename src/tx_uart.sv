@@ -18,17 +18,18 @@ typedef enum {
     IDLE,
     LOAD_INPUT,
     SEND_INPUT,
-    TRANSMIT
+    SHIFT_TO_DEFAULT
 } fsm_state_t;
-
-// fsm variables
-fsm_state_t fsm_current_state;
-fsm_state_t fsm_next_state;
 
 
 //tx_shift_reg variables 
 localparam START_SIZE = 1;
 localparam FRAME_SIZE = STOP_NUM + PARITY + DATA_SIZE + START_SIZE;
+
+// fsm variables
+fsm_state_t fsm_current_state;
+fsm_state_t fsm_next_state;
+logic [$clog2(FRAME_SIZE):0] send_cnt;
 
 logic [FRAME_SIZE-1:0] frame;
 logic shift_en;
@@ -40,9 +41,8 @@ logic load_en;
 TX_SHIFT_REG
 *********************************************************************************
 ********************************************************************************/
-
+logic parity_bit;
 if (PARITY) begin : generate_parity_block
-    logic parity_bit;
     calc_parity #(
         .DATA_SIZE (DATA_SIZE),
         .EVEN_PARITY(EVEN_PARITY)
@@ -50,6 +50,8 @@ if (PARITY) begin : generate_parity_block
         .data_in(data_in),
         .parity_bit(parity_bit)
     );
+end else begin : generate_empty_parity
+    assign parity_bit = 1'b0;
 end
 
 
@@ -84,8 +86,29 @@ FSM
 always_ff @( posedge baud_clk ) begin : fsm_clkd
     if (~rst_f) begin
         fsm_current_state <= IDLE; 
+        load_en <= '0;
+        shift_en <= '0;
+        send_cnt <= '0;
     end else begin
         fsm_current_state <= fsm_next_state;
+
+        if (fsm_current_state == IDLE) begin 
+            load_en <= '0;
+            shift_en <= '0;
+            send_cnt <= '0;
+        end else if (fsm_current_state == LOAD_INPUT) begin
+            load_en <= '1;
+            shift_en <= '0;
+            send_cnt <= '0;
+        end else if (fsm_current_state == SEND_INPUT) begin
+            load_en <= '0;
+            shift_en <= '1;
+            send_cnt <= send_cnt + 1;
+        end else if (fsm_current_state == SHIFT_TO_DEFAULT) begin
+            load_en <= '0;
+            shift_en <= '1;
+            send_cnt <= 0;
+        end 
     end
 end
 
@@ -96,13 +119,20 @@ always_comb begin : fsm
                 fsm_next_state = LOAD_INPUT;
             end
         end
-        LATCH_INPUT : begin
+        LOAD_INPUT : begin
             if (~en) begin
                 fsm_next_state = SEND_INPUT;
             end
         end
-        TRANSMIT :
-        default: 
+        SEND_INPUT : begin
+            if (send_cnt >= FRAME_SIZE) begin
+                fsm_next_state = SHIFT_TO_DEFAULT;
+            end
+        end
+        SHIFT_TO_DEFAULT : begin
+            fsm_next_state = IDLE;
+        end
+        default: fsm_next_state = IDLE;
     endcase
 end
 
