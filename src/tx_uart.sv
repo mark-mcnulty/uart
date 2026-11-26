@@ -1,7 +1,5 @@
 
 module tx_uart #(
-    parameter CLK_MHZ = 10,
-    parameter BAUD_RATE = 9600,
     parameter DATA_SIZE = 8,
     parameter PARITY = 1,
     parameter EVEN_PARITY = 1, 
@@ -13,7 +11,14 @@ module tx_uart #(
     input [DATA_SIZE-1:0]   data_in,
     output                  data_out
 );
-// define variables
+
+
+
+/********************************************************************************
+*********************************************************************************
+Define Variables
+*********************************************************************************
+********************************************************************************/
 typedef enum {
     IDLE,
     LOAD_INPUT,
